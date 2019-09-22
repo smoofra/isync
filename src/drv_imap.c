@@ -142,6 +142,8 @@ struct imap_store {
 	void (*bad_callback)( void *aux );
 	void *bad_callback_aux;
 
+	int fetch_responses_parsed;
+
 	conn_t conn; /* this is BIG, so put it last */
 };
 
@@ -1143,6 +1145,28 @@ parse_fetch_rsp( imap_store_t *ctx, list_t *list, char *s ATTR_UNUSED )
 			memcpy( cur->gen.tuid, tuid, TUIDL );
 		else
 			cur->gen.tuid[0] = 0;
+	}
+
+	ctx->fetch_responses_parsed++; 
+	if (ctx->fetch_responses_parsed % 100 == 0) { 
+		int significant_digits = ctx->fetch_responses_parsed / 100; 
+		while (significant_digits % 10 == 0) { 
+			significant_digits /= 10; 
+		}
+		if (significant_digits < 10 || significant_digits == 12  || significant_digits == 15) { 
+			double n = ctx->fetch_responses_parsed;
+			char *si_prefixes[] = {"", "k", "M", "G", NULL};
+			char **si_prefix_p  = &si_prefixes[0];
+			while (n > 1000 && *si_prefix_p) {
+			 	si_prefix_p++;
+			 	n /= 1000; 
+			}
+			if ((double)(int)n == n) {
+				info("parsed %d%s FETCH responses\n", (int)n, *si_prefix_p);
+			} else { 
+				info("parsed %.1lf%s FETCH responses\n", n, *si_prefix_p);
+			}
+		}
 	}
 
 	free_list( list );
