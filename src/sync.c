@@ -272,7 +272,7 @@ match_tuids( sync_vars_t *svars, int t, message_t *msgs )
 		if (srec->status & S_DEAD)
 			continue;
 		if (!srec->uid[t] && srec->tuid[0]) {
-			info( "  pair(%u,%u): lookup %s, TUID %." stringify(TUIDL) "s\n", srec->uid[M], srec->uid[S], str_ms[t], srec->tuid );
+			debug( "  pair(%u,%u): lookup %s, TUID %." stringify(TUIDL) "s\n", srec->uid[M], srec->uid[S], str_ms[t], srec->tuid );
 #if TUID_HASHTABLE
 			char tuid[TUIDL+1];
 			strlcpy(tuid, srec->tuid, TUIDL+1);
@@ -894,7 +894,7 @@ load_state( sync_vars_t *svars )
 		if (!lock_state( svars ))
 			goto jbail;
 		if (!stat( svars->nname, &st ) && fgets( buf, sizeof(buf), jfp )) {
-			debug( "recovering journal ...\n" );
+			info( "recovering journal ...\n" );
 			if (!(ll = strlen( buf )) || buf[--ll] != '\n') {
 				error( "Error: incomplete journal header in %s\n", svars->jname );
 				goto jbail;
@@ -1410,6 +1410,7 @@ load_box( sync_vars_t *svars, int t, uint minwuid, uint_array_t mexcs )
 	}
 	info( "Loading %s...\n", str_ms[t] );
 	svars->drv[t]->load_box( svars->ctx[t], minwuid, maxwuid, svars->newuid[t], seenuid, mexcs, box_loaded, AUX );
+	info("done loading %s\n", str_ms[t]);
 }
 
 typedef struct {

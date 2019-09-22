@@ -813,7 +813,7 @@ parse_imap_list( imap_store_t *ctx, char **sp, parse_list_state_t *sts )
 			if (s == (void *)~0)
 				goto badeof;
 			if (DFlags & DEBUG_NET) {
-				printf( "%s%s\n", ctx->label, s );
+				printf( "<<<%s%s\n", ctx->label, s );
 				fflush( stdout );
 			}
 		} else if (*s == '"') {
@@ -1349,7 +1349,7 @@ imap_socket_read( void *aux )
 			break;
 		}
 		if (DFlags & DEBUG_NET) {
-			printf( "%s%s\n", ctx->label, cmd );
+			printf( "<<<%s%s\n", ctx->label, cmd );
 			fflush( stdout );
 		}
 
@@ -2639,6 +2639,7 @@ static void imap_submit_load_p2( imap_store_t *, imap_cmd_t *, int );
 static void
 imap_submit_load( imap_store_t *ctx, const char *buf, int flags, imap_load_box_state_t *sts )
 {
+	info("imap: fetching %s\n", buf);
 	imap_exec( ctx, imap_refcounted_new_cmd( &sts->gen ), imap_submit_load_p2,
 	           "UID FETCH %s (UID%s%s%s%s%s%s%s)", buf,
 	           (ctx->opts & OPEN_FLAGS) ? " FLAGS" : "",
@@ -2653,6 +2654,7 @@ imap_submit_load( imap_store_t *ctx, const char *buf, int flags, imap_load_box_s
 static void
 imap_submit_load_p2( imap_store_t *ctx, imap_cmd_t *cmd, int response )
 {
+	info("imap: done fetching\n");
 	imap_load_box_state_t *sts = (imap_load_box_state_t *)((imap_cmd_refcounted_t *)cmd)->state;
 
 	transform_refcounted_box_response( &sts->gen, response );
