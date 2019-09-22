@@ -52,6 +52,20 @@ AC_CHECK_LIB(socket, socket, [SOCK_LIBS="-lsocket"])
 AC_CHECK_LIB(nsl, inet_ntoa, [SOCK_LIBS="$SOCK_LIBS -lnsl"])
 AC_SUBST(SOCK_LIBS)
 
+HAVE_BSD_STRING_H=0
+AC_CHECK_HEADER([bsd/string.h],
+  [HAVE_BSD_STRING_H=1]
+  AC_SUBST([BSD_LIBS], ["-lbsd"])
+  AC_DEFINE(HAVE_BSD_STRING_H, 1, [have bsd/string.h]))
+
+if [[ $HAVE_BSD_STRING_H != 0 ]]; then
+  AC_CHECK_DECLS(strlcpy, , , [[#include <bsd/string.h>]])
+ else
+  AC_CHECK_DECLS(strlcpy)
+fi
+
+AC_CHECK_HEADER(search.h, AC_DEFINE(HAVE_SEARCH_H, 1, [have search.h]))
+
 have_ipv6=true
 sav_LIBS=$LIBS
 LIBS="$LIBS $SOCK_LIBS"

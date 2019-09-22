@@ -35,6 +35,16 @@
 #include <errno.h>
 #include <sys/stat.h>
 
+#define TUID_HASHTABLE (HAVE_DECL_STRLCPY && HAVE_SEARCH_H)
+
+#if HAVE_BSD_STRING_H
+#include <bsd/string.h>
+#endif
+
+#if TUID_HASHTABLE
+#include <search.h>
+#endif
+
 #if !defined(_POSIX_SYNCHRONIZED_IO) || _POSIX_SYNCHRONIZED_IO <= 0
 # define fdatasync fsync
 #endif
@@ -236,13 +246,43 @@ match_tuids( sync_vars_t *svars, int t, message_t *msgs )
 	sync_rec_t *srec;
 	message_t *tmsg, *ntmsg = 0;
 	const char *diag;
-	int num_lost = 0;
+	int num_lost = 0, num_found = 0;
+
+#if TUID_HASHTABLE
+	(void)ntmsg;
+	info("Building hashtable.\n");
+	size_t num_messages = 0;
+	for (tmsg = msgs; tmsg; tmsg = tmsg->next)
+		num_messages++;
+	int ok = hcreate(num_messages);
+	if (!ok) {
+		error("hcreate failed");
+		abort();
+	}
+	for (tmsg = msgs; tmsg; tmsg = tmsg->next) {
+		if (tmsg->tuid[0] ==  0)
+			continue;
+		ENTRY e = {.key = strndup(tmsg->tuid, TUIDL), .data = tmsg};
+		hsearch(e, ENTER);
+	}
+	info("done.  Matching TUIDs.\n");
+#endif
 
 	for (srec = svars->srecs; srec; srec = srec->next) {
 		if (srec->status & S_DEAD)
 			continue;
 		if (!srec->uid[t] && srec->tuid[0]) {
-			debug( "  pair(%u,%u): lookup %s, TUID %." stringify(TUIDL) "s\n", srec->uid[M], srec->uid[S], str_ms[t], srec->tuid );
+			info( "  pair(%u,%u): lookup %s, TUID %." stringify(TUIDL) "s\n", srec->uid[M], srec->uid[S], str_ms[t], srec->tuid );
+#if TUID_HASHTABLE
+			char tuid[TUIDL+1];
+			strlcpy(tuid, srec->tuid, TUIDL+1);
+			ENTRY *found = hsearch((ENTRY){.key=tuid}, FIND);
+			if (found) {
+				diag = "in hashtable";
+				tmsg = found->data;
+				goto mfound;
+			}
+#else
 			for (tmsg = ntmsg; tmsg; tmsg = tmsg->next) {
 				if (tmsg->status & M_DEAD)
 					continue;
@@ -259,6 +299,7 @@ match_tuids( sync_vars_t *svars, int t, message_t *msgs )
 					goto mfound;
 				}
 			}
+#endif
 			debug( "  -> TUID lost\n" );
 			jFprintf( svars, "& %u %u\n", srec->uid[M], srec->uid[S] );
 			srec->flags = 0;
@@ -267,6 +308,7 @@ match_tuids( sync_vars_t *svars, int t, message_t *msgs )
 			num_lost++;
 			continue;
 		  mfound:
+			num_found++;
 			debug( "  -> new UID %u %s\n", tmsg->uid, diag );
 			jFprintf( svars, "%c %u %u %u\n", "<>"[t], srec->uid[M], srec->uid[S], tmsg->uid );
 			tmsg->srec = srec;
@@ -277,8 +319,16 @@ match_tuids( sync_vars_t *svars, int t, message_t *msgs )
 			srec->tuid[0] = 0;
 		}
 	}
+
+	info("Done matching TUIDs.\n");
+
+#if TUID_HASHTABLE
+	hdestroy();
+#endif
+
 	if (num_lost)
-		warn( "Warning: lost track of %d %sed message(s)\n", num_lost, str_hl[t] );
+		warn( "Warning: found %d, lost track of %d %sed message(s)\n", num_found, num_lost, str_hl[t] );
+
 }
 
 
