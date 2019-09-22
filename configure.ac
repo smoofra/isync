@@ -4,7 +4,6 @@ AM_INIT_AUTOMAKE
 
 AM_MAINTAINER_MODE
 
-AC_PROG_CC_C99
 if test "$GCC" = yes; then
     CFLAGS="$CFLAGS -pipe -W -Wall -Wshadow -Wstrict-prototypes -std=c99 -pedantic -Wno-overlength-strings"
 fi

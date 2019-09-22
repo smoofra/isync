@@ -216,7 +216,8 @@ enum CAPABILITY {
 	LITERALPLUS,
 	MOVE,
 	NAMESPACE,
-	COMPRESS_DEFLATE
+	COMPRESS_DEFLATE,
+	X_GM_EXT_1,
 };
 
 static const char *cap_list[] = {
@@ -231,7 +232,8 @@ static const char *cap_list[] = {
 	"LITERAL+",
 	"MOVE",
 	"NAMESPACE",
-	"COMPRESS=DEFLATE"
+	"COMPRESS=DEFLATE",
+	"X-GM-EXT-1",
 };
 
 #define RESP_OK       0
@@ -973,6 +975,8 @@ parse_fetch_rsp( imap_store_t *ctx, list_t *list, char *s ATTR_UNUSED )
 	int mask = 0, status = 0, size = 0;
 	uint i, uid = 0;
 	time_t date = 0;
+	flags_t raw_flags = {};
+	flags_t gm_labels = {};
 
 	if (!is_list( list )) {
 		error( "IMAP error: bogus FETCH response\n" );
@@ -991,6 +995,7 @@ parse_fetch_rsp( imap_store_t *ctx, list_t *list, char *s ATTR_UNUSED )
 				if (is_list( tmp )) {
 					for (flags = tmp->child; flags; flags = flags->next) {
 						if (is_atom( flags )) {
+							add_flag(&raw_flags, flags->val);
 							if (flags->val[0] == '\\' || flags->val[0] == '$') {
 								if (!strcmp( "\\Recent", flags->val)) {
 									status |= M_RECENT;
@@ -1014,6 +1019,19 @@ parse_fetch_rsp( imap_store_t *ctx, list_t *list, char *s ATTR_UNUSED )
 					status |= M_FLAGS;
 				} else
 					error( "IMAP error: unable to parse FLAGS\n" );
+			} else if (!strcmp( "X-GM-LABELS", tmp->val)) {
+				tmp = tmp->next;
+				if (is_list(tmp)) {
+					for (flags = tmp->child; flags; flags = flags->next) {
+						if (is_atom(flags)) {
+							add_flag(&gm_labels, flags->val);
+						} else {
+							error("IMAP error: unable to parse X-GM-LABELS list\n");
+						}
+					}
+				} else {
+					error("IMAP error: unable to parse X-GM-LABELS list\n");
+				}
 			} else if (!strcmp( "INTERNALDATE", tmp->val )) {
 				tmp = tmp->next;
 				if (is_atom( tmp )) {
@@ -1119,6 +1137,8 @@ parse_fetch_rsp( imap_store_t *ctx, list_t *list, char *s ATTR_UNUSED )
 		cur->gen.size = size;
 		cur->gen.srec = 0;
 		cur->gen.msgid = msgid;
+		memcpy(&cur->gen.gm_labels, &gm_labels, sizeof(flags_t));
+		memcpy(&cur->gen.raw_flags, &raw_flags, sizeof(flags_t));
 		if (tuid)
 			memcpy( cur->gen.tuid, tuid, TUIDL );
 		else
@@ -2641,8 +2661,9 @@ imap_submit_load( imap_store_t *ctx, const char *buf, int flags, imap_load_box_s
 {
 	info("imap: fetching %s\n", buf);
 	imap_exec( ctx, imap_refcounted_new_cmd( &sts->gen ), imap_submit_load_p2,
-	           "UID FETCH %s (UID%s%s%s%s%s%s%s)", buf,
+	           "UID FETCH %s (UID%s%s%s%s%s%s%s%s)", buf,
 	           (ctx->opts & OPEN_FLAGS) ? " FLAGS" : "",
+			   (CAP(X_GM_EXT_1) ? " X-GM-LABELS" : ""),
 	           (flags & WantSize) ? " RFC822.SIZE" : "",
 	           (flags & (WantTuids | WantMsgids)) ? " BODY.PEEK[HEADER.FIELDS (" : "",
 	           (flags & WantTuids) ? "X-TUID" : "",

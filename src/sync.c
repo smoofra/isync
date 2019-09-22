@@ -163,7 +163,7 @@ typedef struct sync_rec {
 typedef struct {
 	int t[2];
 	void (*cb)( int sts, void *aux ), *aux;
-	char *dname, *jname, *nname, *lname, *box_name[2];
+	char *dname, *jname, *nname, *lname, *flags_filename, *box_name[2];
 	FILE *jfp, *nfp;
 	sync_rec_t *srecs, **srecadd;
 	channel_conf_t *chan;
@@ -675,6 +675,7 @@ prepare_state( sync_vars_t *svars )
 	nfasprintf( &svars->jname, "%s.journal", svars->dname );
 	nfasprintf( &svars->nname, "%s.new", svars->dname );
 	nfasprintf( &svars->lname, "%s.lock", svars->dname );
+	nfasprintf( &svars->flags_filename, "%s.flags", svars->dname);
 	return 1;
 }
 
@@ -706,11 +707,62 @@ lock_state( sync_vars_t *svars )
 	return 1;
 }
 
+static int
+printflag(FILE *out, const char *flag)
+{
+	int needs_quotes = 0;
+	for (const char *c = flag; *c; c++) {
+		if (!isalnum(*c) && *c != '\\' && *c != '/' && *c != '.') {
+			needs_quotes = 1;
+		}
+		if (*c < 0x20 && *c != ' ') {
+			error("flag is not printable\n");
+			return 0;
+		}
+	}
+	if (!needs_quotes) {
+		fprintf(out, "%s", flag);
+	} else {
+		fprintf(out, "%c", '"');
+		for (const char *c = flag; *c; c++) {
+			if (*c == '"' || *c == '\\') {
+				fprintf(out, "\\%c", *c);
+			} else {
+				fprintf(out, "%c", *c);
+			}
+		}
+		fprintf(out, "%c", '"');
+	}
+	return 1;
+}
+
+static void
+printflags(FILE *out, const char *name, flags_t *flags)
+{
+	size_t size = flags_size(flags);
+	if (size) {
+		fprintf(out, " %s (", name);
+		char *data = flags_data(flags);
+		char *data_end = data + size;
+		int printed = 0;
+		while (data < data_end) {
+			if (printed) {
+				fprintf(out, " ");
+			}
+			printed = printflag(out, data);
+			data += strlen(data) + 1;
+		}
+		fprintf(out, ")");
+	}
+}
+
 static void
 save_state( sync_vars_t *svars )
 {
 	sync_rec_t *srec;
 	char fbuf[16]; /* enlarge when support for keywords is added */
+
+	FILE *flags_fp = fopen(svars->flags_filename, "w");
 
 	Fprintf( svars->nfp,
 	         "MasterUidValidity %u\nSlaveUidValidity %u\nMaxPulledUid %u\nMaxPushedUid %u\n",
@@ -724,10 +776,22 @@ save_state( sync_vars_t *svars )
 		make_flags( srec->flags, fbuf );
 		Fprintf( svars->nfp, "%u %u %s%s\n", srec->uid[M], srec->uid[S],
 		         (srec->status & S_SKIPPED) ? "^" : (srec->status & S_PENDING) ? "!" : (srec->status & S_EXPIRED) ? "~" : "", fbuf );
+
+		message_t *msg = srec->msg[M];
+		fprintf(flags_fp, "%u %u", srec->uid[M], srec->uid[S]);
+		if (msg) {
+			printflags(flags_fp, "FLAGS", &msg->raw_flags);
+			printflags(flags_fp, "X-GM-LABELS", &msg->gm_labels);
+		} else {
+			fprintf(flags_fp, " no-message");
+		}
+		fprintf(flags_fp, "\n");
 	}
 
 	Fclose( svars->nfp, 1 );
 	Fclose( svars->jfp, 0 );
+	fclose(flags_fp);
+
 	if (!(DFlags & KEEPJOURNAL)) {
 		/* order is important! */
 		if (rename( svars->nname, svars->dname ))
@@ -2272,6 +2336,7 @@ sync_bail2( sync_vars_t *svars )
 	free( svars->nname );
 	free( svars->jname );
 	free( svars->dname );
+	free( svars->flags_filename );
 	sync_bail3( svars );
 }
 

@@ -62,6 +62,21 @@ typedef struct store_conf {
 
 #define TUIDL 12
 
+struct flags_data;
+
+typedef struct {
+	union {
+		struct flags_data *data_p;
+		char data[127];
+	};
+	uchar size;
+} flags_t;
+
+void  add_flag(flags_t *flags, char *flag);
+size_t flags_size(flags_t *flags);
+char *flags_data(flags_t *flags);
+void flags_wipe(flags_t *flags);
+
 typedef struct message {
 	struct message *next;
 	struct sync_rec *srec;
@@ -71,6 +86,8 @@ typedef struct message {
 	uint uid;
 	uchar flags, status;
 	char tuid[TUIDL];
+	flags_t raw_flags; /* owned */
+	flags_t gm_labels; /* owned */
 } message_t;
 
 /* For opts, both in store and driver_t->select() */
